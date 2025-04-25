@@ -19,7 +19,7 @@ use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
 use lazy_static::*;
 use switch::__switch;
-pub use task::{TaskControlBlock, TaskStatus};
+pub use task::{TaskControlBlock, TaskStatus, MAX_SYSCALL_NUM};
 
 pub use context::TaskContext;
 
@@ -53,6 +53,7 @@ lazy_static! {
         let num_app = get_num_app();
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
+            syscall_times: [0; MAX_SYSCALL_NUM], // initialize call times as 0
             task_status: TaskStatus::UnInit,
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
@@ -132,9 +133,37 @@ impl TaskManager {
             }
             // go back to user mode
         } else {
-            panic!("All applications completed!");
+            println!("All applications completed!");
+            use crate::board::QEMUExit;
+            crate::board::QEMU_EXIT_HANDLE.exit_success();
+
         }
     }
+
+    /// count syscall[id] += 1
+    fn count_syscall(&self, syscall_id:usize){
+        let mut inner = self.inner.exclusive_access();
+        let current_task_id = inner.current_task;
+        inner.tasks[current_task_id].syscall_times[syscall_id] +=1;
+    }
+
+    /// get all syscall counter
+    fn get_syscall_cnt(&self) -> [u32;MAX_SYSCALL_NUM]{
+        let inner = self.inner.exclusive_access();
+        let current_task_id = inner.current_task;
+        inner.tasks[current_task_id].syscall_times
+    }
+
+}
+
+/// pub count syscall[id] += 1
+pub fn count_syscall(syscall_id:usize){
+    TASK_MANAGER.count_syscall(syscall_id);
+}
+
+/// pub get all syscall counter
+pub fn get_syscall_cnt()->[u32;MAX_SYSCALL_NUM]{
+    TASK_MANAGER.get_syscall_cnt()
 }
 
 /// Run the first task in task list.
