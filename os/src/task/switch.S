@@ -22,7 +22,7 @@ __switch:
         .set n, n + 1
     .endr
     # restore ra & s0~s11 of next execution
-    ld ra, 0(a1)
+    ld ra, 0(a1) //存的是trap_return()
     .set n, 0
     .rept 12
         LOAD_SN %n
@@ -30,5 +30,5 @@ __switch:
     .endr
     # restore kernel stack of next task
     ld sp, 8(a1)
-    ret
+    ret //回到 ra trap_return()
 

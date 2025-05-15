@@ -6,6 +6,10 @@ use crate::mm::{
 };
 use crate::trap::{trap_handler, TrapContext};
 
+/// We can find the Biggest num is SYSCALL_CONDVAR_WAIT: usize = 473, 
+/// so, let us set it to 500
+pub const MAX_SYSCALL_NUM:usize = 500;
+
 /// The task control block (TCB) of a task.
 pub struct TaskControlBlock {
     /// Save task context
@@ -28,6 +32,9 @@ pub struct TaskControlBlock {
 
     /// Program break
     pub program_brk: usize,
+
+    /// the index is the ID of syscall
+    pub syscall_times: [u32;MAX_SYSCALL_NUM], 
 }
 
 impl TaskControlBlock {
@@ -63,6 +70,7 @@ impl TaskControlBlock {
             base_size: user_sp,
             heap_bottom: user_sp,
             program_brk: user_sp,
+            syscall_times: [0; MAX_SYSCALL_NUM], // initialize call times as 0
         };
         // prepare TrapContext in user space
         let trap_cx = task_control_block.get_trap_cx();

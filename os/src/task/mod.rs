@@ -19,8 +19,9 @@ use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
 use lazy_static::*;
+use crate::mm::{PhysAddr, VirtAddr};
 use switch::__switch;
-pub use task::{TaskControlBlock, TaskStatus};
+pub use task::{TaskControlBlock, TaskStatus,MAX_SYSCALL_NUM};
 
 pub use context::TaskContext;
 
@@ -150,8 +151,50 @@ impl TaskManager {
             }
             // go back to user mode
         } else {
-            panic!("All applications completed!");
+            println!("All applications completed!");
+            use crate::board::QEMUExit;
+            crate::board::QEMU_EXIT_HANDLE.exit_success();
         }
+    }
+
+    /// 在处于内核态的情况向用户态的虚拟地址写入数据
+    fn get_user_pa(&self, va: VirtAddr, readable: &mut bool, writable: &mut bool) -> Option<PhysAddr> {
+        let inner = self.inner.exclusive_access();
+        let curr_idx = inner.current_task;
+        let curr_task = &inner.tasks[curr_idx];
+        curr_task
+            .memory_set
+            .va2pa(va, readable, writable)
+    }
+
+    /// count syscall[id] += 1
+    fn count_syscall(&self, syscall_id:usize){
+        let mut inner = self.inner.exclusive_access();
+        let current_task_id = inner.current_task;
+        inner.tasks[current_task_id].syscall_times[syscall_id] +=1;
+    }
+
+    /// get all syscall counter
+    fn get_syscall_cnt(&self) -> [u32;MAX_SYSCALL_NUM]{
+        let inner = self.inner.exclusive_access();
+        let current_task_id = inner.current_task;
+        inner.tasks[current_task_id].syscall_times
+    }
+    /// 申请长度为 len 字节的内存
+    fn mmap(&self, start: usize, len: usize, port: usize) -> Option<()> {
+        let mut inner = self.inner.exclusive_access();
+        let curr_idx = inner.current_task;
+        let curr_task = &mut inner.tasks[curr_idx];
+
+        curr_task.memory_set.mmap(start, len, port)
+    }
+    /// 取消到 [start, start + len) 虚存的映射
+    pub fn munmap(& self, start: usize, len: usize) -> Option<()> {
+        let mut inner = self.inner.exclusive_access();
+        let curr_idx = inner.current_task;
+        let curr_task = &mut inner.tasks[curr_idx];
+
+        curr_task.memory_set.munmap(start, len)
     }
 }
 
@@ -202,3 +245,29 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
 }
+
+/// 在处于内核态的情况向用户态的虚拟地址写入数据, 并返回对应的物理地址
+pub fn get_user_pa(va: VirtAddr, readable: &mut bool, writable: &mut bool) -> Option<PhysAddr> {
+    TASK_MANAGER.get_user_pa(va, readable, writable)
+}   
+
+/// pub count syscall[id] += 1
+pub fn count_syscall(syscall_id:usize){
+    TASK_MANAGER.count_syscall(syscall_id);
+}
+
+/// pub get all syscall counter
+pub fn get_syscall_cnt()->[u32;MAX_SYSCALL_NUM]{
+    TASK_MANAGER.get_syscall_cnt()
+}
+
+/// 申请长度为 len 字节的内存
+pub fn mmap(start: usize, len: usize, port: usize) -> Option<()> {
+    TASK_MANAGER.mmap(start, len, port)
+}
+
+/// 取消到 [start, start + len) 虚存的映射
+pub fn munmap(start: usize, len: usize) -> Option<()> {
+    TASK_MANAGER.munmap(start, len)
+}
+

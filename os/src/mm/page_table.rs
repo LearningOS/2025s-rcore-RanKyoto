@@ -1,6 +1,6 @@
 //! Implementation of [`PageTableEntry`] and [`PageTable`].
 
-use super::{frame_alloc, FrameTracker, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
+use super::{frame_alloc, FrameTracker, PhysAddr, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
 use alloc::vec;
 use alloc::vec::Vec;
 use bitflags::*;
@@ -58,6 +58,12 @@ impl PageTableEntry {
     pub fn is_valid(&self) -> bool {
         (self.flags() & PTEFlags::V) != PTEFlags::empty()
     }
+    
+    /// 用户是否可以访问
+    pub fn is_user(&self) -> bool {
+        (self.flags() & PTEFlags::U) != PTEFlags::empty()
+    }
+
     /// The page pointered by page table entry is readable?
     pub fn readable(&self) -> bool {
         (self.flags() & PTEFlags::R) != PTEFlags::empty()
@@ -153,7 +159,26 @@ impl PageTable {
     }
     /// get the token from the page table
     pub fn token(&self) -> usize {
-        8usize << 60 | self.root_ppn.0
+        8usize << 60 | self.root_ppn.0  //这里的 8 代表 3 级页表
+    }
+
+    /// translate VirtAddr into PhysAddr
+    pub fn find_pa(&self, va: VirtAddr, readable: &mut bool, writable: &mut bool) -> Option<PhysAddr> {
+        let vpn = va.floor();
+        if let Some(pte) = self.translate(vpn) {
+            if !pte.is_user() {
+                None
+            } else {
+                *readable = pte.readable();
+                *writable = pte.writable();
+                let ppn = pte.ppn();
+                Some(PhysAddr(
+                    PhysAddr::from(ppn).0 | va.page_offset(),
+                ))
+            }
+        } else {
+            None
+        }
     }
 }
 
@@ -179,3 +204,4 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
     }
     v
 }
+

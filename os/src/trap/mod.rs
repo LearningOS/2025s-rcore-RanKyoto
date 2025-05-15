@@ -56,8 +56,8 @@ pub fn enable_timer_interrupt() {
 /// trap handler
 #[no_mangle]
 pub fn trap_handler() -> ! {
-    set_kernel_trap_entry();
-    let cx = current_trap_cx();
+    set_kernel_trap_entry(); //从用户态陷入到内核态，这时候如果从内核态再次陷入则直接 panic
+    let cx = current_trap_cx(); //获取当前任务的陷入上下文
     let scause = scause::read(); // get trap cause
     let stval = stval::read(); // get extra value
     // trace!("into {:?}", scause.cause());
@@ -73,15 +73,15 @@ pub fn trap_handler() -> ! {
         | Trap::Exception(Exception::LoadFault)
         | Trap::Exception(Exception::LoadPageFault) => {
             println!("[kernel] PageFault in application, bad addr = {:#x}, bad instruction = {:#x}, kernel killed it.", stval, cx.sepc);
-            exit_current_and_run_next();
+            exit_current_and_run_next(); //退出当前任务，继续执行下一个任务
         }
         Trap::Exception(Exception::IllegalInstruction) => {
             println!("[kernel] IllegalInstruction in application, kernel killed it.");
-            exit_current_and_run_next();
+            exit_current_and_run_next(); //退出当前任务，继续执行下一个任务
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             set_next_trigger();
-            suspend_current_and_run_next();
+            suspend_current_and_run_next(); //在定时器中断中切换任务
         }
         _ => {
             panic!(
@@ -92,7 +92,7 @@ pub fn trap_handler() -> ! {
         }
     }
     //println!("before trap_return");
-    trap_return();
+    trap_return(); //结束陷入时需要恢复相应的寄存器，在执行 switch 之后会直接进入到该函数内，这里的调用被跳过。
 }
 
 #[no_mangle]
@@ -101,18 +101,18 @@ pub fn trap_handler() -> ! {
 /// set the reg a0 = trap_cx_ptr, reg a1 = phy addr of usr page table,
 /// finally, jump to new addr of __restore asm function
 pub fn trap_return() -> ! {
-    set_user_trap_entry();
-    let trap_cx_ptr = TRAP_CONTEXT_BASE;
-    let user_satp = current_user_token();
+    set_user_trap_entry(); // 为了回到用户态做准备，用户态陷入的入口是 _alltrap() (TRAMPOLINE) 虚拟地址
+    let trap_cx_ptr = TRAP_CONTEXT_BASE; //陷入上下文的虚拟地址
+    let user_satp = current_user_token(); //当前任务的页表根物理地址
     extern "C" {
         fn __alltraps();
         fn __restore();
     }
-    let restore_va = __restore as usize - __alltraps as usize + TRAMPOLINE;
+    let restore_va = __restore as usize - __alltraps as usize + TRAMPOLINE; //恢复函数的虚拟地址
     // trace!("[kernel] trap_return: ..before return");
     unsafe {
         asm!(
-            "fence.i",
+            "fence.i",                 // 清除缓存
             "jr {restore_va}",         // jump to new addr of __restore asm function
             restore_va = in(reg) restore_va,
             in("a0") trap_cx_ptr,      // a0 = virt addr of Trap Context
