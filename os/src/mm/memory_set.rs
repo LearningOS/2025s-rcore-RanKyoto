@@ -300,6 +300,51 @@ impl MemorySet {
             false
         }
     }
+    /// transform virtual address to physics address
+    pub fn va2pa(&self, va: VirtAddr, readable: &mut bool, writable: &mut bool) -> Option<PhysAddr> {
+        self.page_table.find_pa(va, readable, writable)
+    }
+
+    /// 检测某虚拟地址区间的是地址是否有进行映射
+    fn check_area_any_maped(&self, start_vpn: VirtPageNum, end_vpn: VirtPageNum) -> bool {
+        let range = VPNRange::new(start_vpn, end_vpn);
+        range.into_iter().any(|vpn| {
+            self.page_table
+                .translate(vpn)
+                .map(|pte| pte.is_valid())
+                .unwrap_or(false)
+        })
+    }
+    /// 申请长度为 len 字节的内存
+    pub fn mmap(&mut self, start: usize, len: usize, prot: usize) -> Option<()> {
+        let end = start + len;
+        let (start_va, end_va) = (VirtAddr::from(start), VirtAddr::from(end));
+        // 如果给的地址没有 4K 对齐，不可读写执行，或者读写执行以外的位不等于 0， 直接返回 None
+        if !start_va.aligned() || (prot & !0x7) != 0 || ((prot & 0x7) == 0) {
+            return None;
+        }
+        let start_vpn = start_va.floor();
+        let end_vpn = end_va.ceil();
+        // 区间中已经有被分配过的部分了，直接返回 None
+        if self.check_area_any_maped(start_vpn, end_vpn) {
+            return None;
+        }
+        // 读写可执行分别在 1,2,3 位，需要将 prot 左移一位
+        let perm = MapPermission::U | MapPermission::from_bits((prot << 1) as u8).unwrap();
+        self.insert_framed_area(start_va, end_va, perm);
+        return Some(());
+    }
+
+    /// 取消到 [start, start + len) 虚存的映射
+    pub fn munmap(&mut self, start: usize, len: usize) -> Option<()> {
+        self.areas
+            .iter_mut()
+            .find(|area| {
+                VirtAddr::from(area.vpn_range.get_start()) == VirtAddr::from(start)
+                    && area.vpn_range.get_end() == VirtAddr::from(start + len).ceil()
+            })
+            .map(|area| area.unmap(&mut self.page_table))
+    }
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {

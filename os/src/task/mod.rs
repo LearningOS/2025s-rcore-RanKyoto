@@ -35,6 +35,10 @@ pub use processor::{
     current_task, current_trap_cx, current_user_token, run_tasks, schedule, take_current_task,
     Processor,
 };
+
+/// 这个常数用来控制不同优先级进度的增加速度
+pub const BIG_STRIDE:usize = 512;
+
 /// Suspend the current 'Running' task and run the next task in task list.
 pub fn suspend_current_and_run_next() {
     // There must be an application running.
@@ -45,6 +49,7 @@ pub fn suspend_current_and_run_next() {
     let task_cx_ptr = &mut task_inner.task_cx as *mut TaskContext;
     // Change status to Ready
     task_inner.task_status = TaskStatus::Ready;
+    task_inner.task_stride += BIG_STRIDE / task_inner.task_priority; 
     drop(task_inner);
     // ---- release current PCB
 
