@@ -80,12 +80,14 @@ type IndirectBlock = [u32; BLOCK_SZ / 4];
 type DataBlock = [u8; BLOCK_SZ];
 /// A disk inode
 #[repr(C)]
-pub struct DiskInode {
-    pub size: u32,
-    pub direct: [u32; INODE_DIRECT_COUNT],
-    pub indirect1: u32,
-    pub indirect2: u32,
-    type_: DiskInodeType,
+pub struct DiskInode {//共 128 字节
+    pub size: u32, //4字节
+    pub direct: [u32; INODE_DIRECT_COUNT],// 28*4 字节
+    pub indirect1: u32, //4字节
+    pub indirect2: u32, //4字节
+    type_: DiskInodeType, //1字节
+    pub nlink: u8, //1 字节
+    // 填充 2 字节，4 字节对齐
 }
 
 impl DiskInode {
@@ -97,6 +99,7 @@ impl DiskInode {
         self.indirect1 = 0;
         self.indirect2 = 0;
         self.type_ = type_;
+        self.nlink = 1; //初始硬链接为 1
     }
     /// Whether this inode is a directory
     pub fn is_dir(&self) -> bool {
@@ -136,29 +139,29 @@ impl DiskInode {
         assert!(new_size >= self.size);
         Self::total_blocks(new_size) - Self::total_blocks(self.size)
     }
-    /// Get id of block given inner id
+    /// Get id of block given inner id 读取数据块的地址 u32 4个字节
     pub fn get_block_id(&self, inner_id: u32, block_device: &Arc<dyn BlockDevice>) -> u32 {
-        let inner_id = inner_id as usize;
-        if inner_id < INODE_DIRECT_COUNT {
+        let inner_id = inner_id as usize; //数据块的 ID
+        if inner_id < INODE_DIRECT_COUNT { //小于直接索引上限 直接按 ID 读取
             self.direct[inner_id]
-        } else if inner_id < INDIRECT1_BOUND {
+        } else if inner_id < INDIRECT1_BOUND { //小于一级索引上限 需要从一级索引块中读取数据块，具体位置是inner_id - INODE_DIRECT_COUNT， 这里的 offset 是块中的偏移
             get_block_cache(self.indirect1 as usize, Arc::clone(block_device))
                 .lock()
                 .read(0, |indirect_block: &IndirectBlock| {
                     indirect_block[inner_id - INODE_DIRECT_COUNT]
                 })
-        } else {
-            let last = inner_id - INDIRECT1_BOUND;
+        } else { //超过一级索引上限之后，需要用到二级索引
+            let last = inner_id - INDIRECT1_BOUND;// last = 二级索引号 * 128 + 一级索引号
             let indirect1 = get_block_cache(self.indirect2 as usize, Arc::clone(block_device))
                 .lock()
                 .read(0, |indirect2: &IndirectBlock| {
                     indirect2[last / INODE_INDIRECT1_COUNT]
-                });
+                });//先找到二级索引号指向的 一级索引块
             get_block_cache(indirect1 as usize, Arc::clone(block_device))
                 .lock()
                 .read(0, |indirect1: &IndirectBlock| {
                     indirect1[last % INODE_INDIRECT1_COUNT]
-                })
+                })//再找到一级索引快指向的 数据块
         }
     }
     /// Inncrease the size of current disk inode
@@ -173,17 +176,17 @@ impl DiskInode {
         let mut total_blocks = self.data_blocks();
         let mut new_blocks = new_blocks.into_iter();
         // fill direct
-        while current_blocks < total_blocks.min(INODE_DIRECT_COUNT as u32) {
+        while current_blocks < total_blocks.min(INODE_DIRECT_COUNT as u32) {  //这种情况无需新增索引块，直接分配新增数据块就行
             self.direct[current_blocks as usize] = new_blocks.next().unwrap();
             current_blocks += 1;
         }
         // alloc indirect1
         if total_blocks > INODE_DIRECT_COUNT as u32 {
             if current_blocks == INODE_DIRECT_COUNT as u32 {
-                self.indirect1 = new_blocks.next().unwrap();
+                self.indirect1 = new_blocks.next().unwrap(); //超出直接索引之后，首先得先分配一个一级索引快
             }
-            current_blocks -= INODE_DIRECT_COUNT as u32;
-            total_blocks -= INODE_DIRECT_COUNT as u32;
+            current_blocks -= INODE_DIRECT_COUNT as u32; // 清 0
+            total_blocks -= INODE_DIRECT_COUNT as u32;   // 剩余数据块
         } else {
             return;
         }
@@ -316,12 +319,12 @@ impl DiskInode {
         block_device: &Arc<dyn BlockDevice>,
     ) -> usize {
         let mut start = offset;
-        let end = (offset + buf.len()).min(self.size as usize);
+        let end = (offset + buf.len()).min(self.size as usize); //读取 buf 长度的数据，但不超过所有数据的大小。
         if start >= end {
             return 0;
         }
-        let mut start_block = start / BLOCK_SZ;
-        let mut read_size = 0usize;
+        let mut start_block = start / BLOCK_SZ; //从这个数据块开始读
+        let mut read_size = 0usize; //计数器
         loop {
             // calculate end of current block
             let mut end_current_block = (start / BLOCK_SZ + 1) * BLOCK_SZ;

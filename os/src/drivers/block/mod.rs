@@ -10,9 +10,9 @@ use lazy_static::*;
 
 type BlockDeviceImpl = virtio_blk::VirtIOBlock;
 
-lazy_static! {
+lazy_static! { //维护下面这个块设备 RefCell 提供单线程内部可变调用， Arc 提供多线程共享
     /// The global block device driver instance: BLOCK_DEVICE with BlockDevice trait
-    pub static ref BLOCK_DEVICE: Arc<dyn BlockDevice> = Arc::new(BlockDeviceImpl::new());
+    pub static ref BLOCK_DEVICE: Arc<dyn BlockDevice> = Arc::new(BlockDeviceImpl::new());//第一次创建，强计数为 1
 }
 
 #[allow(unused)]

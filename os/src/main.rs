@@ -30,6 +30,9 @@ extern crate bitflags;
 #[macro_use]
 extern crate log;
 
+#[path = "boards/qemu.rs"]
+mod board;
+
 extern crate alloc;
 
 #[macro_use]
@@ -46,6 +49,7 @@ pub mod syscall;
 pub mod task;
 pub mod timer;
 pub mod trap;
+
 
 use core::arch::global_asm;
 

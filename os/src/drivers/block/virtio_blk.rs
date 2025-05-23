@@ -33,13 +33,14 @@ impl BlockDevice for VirtIOBlock {
     }
 }
 
-impl VirtIOBlock {
+impl VirtIOBlock {//块设备是在 make_file 中加载的虚拟内存映射IO
     #[allow(unused)]
     /// Create a new VirtIOBlock driver with VIRTIO0 base_addr for virtio_blk device
     pub fn new() -> Self {
         unsafe {
-            Self(UPSafeCell::new(
-                VirtIOBlk::<VirtioHal>::new(&mut *(VIRTIO0 as *mut VirtIOHeader)).unwrap(),
+            Self(UPSafeCell::new( //从VIRTIO0 处读取虚拟 IO 的相关信息从而创建块设备
+                VirtIOBlk::<VirtioHal>::new(&mut *(VIRTIO0 as *mut VirtIOHeader))
+                .unwrap(),
             ))
         }
     }

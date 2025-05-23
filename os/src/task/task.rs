@@ -71,6 +71,12 @@ pub struct TaskControlBlockInner {
 
     /// Program break
     pub program_brk: usize,
+
+    /// task priority
+    pub task_priority: usize,
+
+    /// task stride
+    pub task_stride: usize,
 }
 
 impl TaskControlBlockInner {
@@ -135,6 +141,8 @@ impl TaskControlBlock {
                     ],
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    task_priority: 16, //初始化优先级为 16
+                    task_stride: 0,    //运行进度为 0
                 })
             },
         };
@@ -216,6 +224,8 @@ impl TaskControlBlock {
                     fd_table: new_fd_table,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
+                    task_priority: parent_inner.task_priority,
+                    task_stride: parent_inner.task_stride,
                 })
             },
         });

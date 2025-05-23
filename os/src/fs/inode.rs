@@ -4,7 +4,7 @@
 //!
 //! `UPSafeCell<OSInodeInner>` -> `OSInode`: for static `ROOT_INODE`,we
 //! need to wrap `OSInodeInner` into `UPSafeCell`
-use super::File;
+use super::{File,Stat,StatMode};
 use crate::drivers::BLOCK_DEVICE;
 use crate::mm::UserBuffer;
 use crate::sync::UPSafeCell;
@@ -156,4 +156,40 @@ impl File for OSInode {
         }
         total_write_size
     }
+
+    /// 获取文件元数据
+    fn get_stat(&self) -> Option<Stat> {
+        let inner = self.inner.exclusive_access();
+        let inode = &inner.inode;
+        
+       // 获取 inode 的元数据
+       let (mode, nlink) = inode.stat();
+
+       // 将元数据转换为 StatMode 枚举
+       let mode = match mode {
+           1 => StatMode::DIR,
+           2 => StatMode::FILE,
+           _ => {
+            debug!("Unknown inode type: {}", mode);
+            panic!("Unknown inode type")}
+       };
+       // 创建 Stat 结构体
+       Some(Stat {
+           dev: 0, // 设备号固定为 0
+           ino: 0,
+           mode,
+           nlink,
+           pad: Default::default(),
+       })  
+    }
+}
+
+///硬链接的公共接口
+pub fn link_file(old_name:&str, new_name:&str)->Option<()>{
+    ROOT_INODE.link(old_name, new_name)
+}
+
+///解除硬链接的公共接口
+pub fn unlink_file(name:&str)->Option<()>{
+    ROOT_INODE.unlink(name)
 }

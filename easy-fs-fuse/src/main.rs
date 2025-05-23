@@ -76,9 +76,10 @@ fn easy_fs_pack() -> std::io::Result<()> {
         let mut all_data: Vec<u8> = Vec::new();
         host_file.read_to_end(&mut all_data).unwrap();
         // create a file in easy-fs
-        let inode = root_inode.create(app.as_str()).unwrap();
+        let inode = root_inode.create(app.as_str()).unwrap();//新增一个目录项存放 app 的名字和 inode 号，同时也新增一个 DiskiNode，用来存放实际的数据
         // write data to easy-fs
-        inode.write_at(0, all_data.as_slice());
+        inode.write_at(0, all_data.as_slice());//向新增的 inode 写入数据 Inode 是目录项与 Diskinode 的桥梁，
+                                                           //通过fn find_inode_id(&self, name: &str, disk_inode: &DiskInode) 来访问根目录来找到 app 的 inode 号
     }
     // list apps
     // for app in root_inode.ls() {

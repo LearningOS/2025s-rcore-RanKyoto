@@ -65,11 +65,9 @@ pub fn exit_current_and_run_next(exit_code: i32) {
 
     let pid = task.getpid();
     if pid == IDLE_PID {
-        println!(
-            "[kernel] Idle process exit with exit_code {} ...",
-            exit_code
-        );
-        panic!("All applications completed!");
+        println!("All applications completed!");
+        use crate::board::QEMUExit;
+        crate::board::QEMU_EXIT_HANDLE.exit_success();
     }
 
     // **** access current TCB exclusively
