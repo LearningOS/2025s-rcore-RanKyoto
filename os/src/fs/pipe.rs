@@ -48,6 +48,7 @@ pub struct PipeRingBuffer {
     write_end: Option<Weak<Pipe>>,
 }
 
+/// 一个环状的 buffer
 impl PipeRingBuffer {
     pub fn new() -> Self {
         Self {
@@ -58,6 +59,7 @@ impl PipeRingBuffer {
             write_end: None,
         }
     }
+    ///使用 Arc 为了多线程引用，弱引用计数不影响数据生命周期，防止循环引用
     pub fn set_write_end(&mut self, write_end: &Arc<Pipe>) {
         self.write_end = Some(Arc::downgrade(write_end));
     }
@@ -94,6 +96,7 @@ impl PipeRingBuffer {
             RING_BUFFER_SIZE - self.available_read()
         }
     }
+    /// 当所有写端被关闭时，返回 true
     pub fn all_write_ends_closed(&self) -> bool {
         self.write_end.as_ref().unwrap().upgrade().is_none()
     }
